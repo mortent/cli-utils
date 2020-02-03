@@ -15,6 +15,7 @@ import (
 	"k8s.io/kubectl/pkg/cmd/util"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 	"k8s.io/kubectl/pkg/util/i18n"
+	"sigs.k8s.io/cli-utils/cmd/status"
 	"sigs.k8s.io/cli-utils/pkg/apply"
 )
 
@@ -54,6 +55,7 @@ func NewKapplyCommand(parent *cobra.Command) *cobra.Command {
 	updateHelp(names, diffCmd)
 
 	r.AddCommand(applyCmd, diffCmd)
+	r.AddCommand(status.StatusCommand())
 	return r
 }
 
