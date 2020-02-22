@@ -200,8 +200,6 @@ func (f *fakeObserver) ObserveObject(_ context.Context, _ *unstructured.Unstruct
 	return nil
 }
 
-func (f *fakeObserver) SetComputeStatusFunc(_ ComputeStatusFunc) {}
-
 func newFakeAggregator(identifiers []wait.ResourceIdentifier) *fakeAggregator {
 	statuses := make(map[wait.ResourceIdentifier]status.Status)
 	for _, id := range identifiers {

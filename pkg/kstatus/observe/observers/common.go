@@ -23,28 +23,37 @@ import (
 	"sigs.k8s.io/cli-utils/pkg/kstatus/wait"
 )
 
-// BaseObserver provides some basic functionality needed by the observers.
-type BaseObserver struct {
-	Reader observer.ClusterReader
+type computeStatusFunc func(u *unstructured.Unstructured) (*status.Result, error)
 
-	Mapper meta.RESTMapper
-
-	computeStatusFunc observer.ComputeStatusFunc
+func observerFactory(reader observer.ClusterReader, mapper meta.RESTMapper, resourceTypeObserver resourceTypeObserver) observer.ResourceObserver {
+	return &baseObserver{
+		reader:               reader,
+		mapper:               mapper,
+		resourceTypeObserver: resourceTypeObserver,
+	}
 }
 
-// SetComputeStatusFunc allows for setting the function used by the observer for computing status. The default
-// value here is to use the status package. This is provided for testing purposes.
-func (b *BaseObserver) SetComputeStatusFunc(statusFunc observer.ComputeStatusFunc) {
-	b.computeStatusFunc = statusFunc
+type resourceTypeObserver interface {
+	ObserveObject(ctx context.Context, resource *unstructured.Unstructured) *event.ObservedResource
 }
 
-// LookupResource looks up a resource with the given identifier. It will use the rest mapper to resolve
-// the version of the GroupKind given in the identifier.
-// If the resource is found, it will be returned and the observedResource will be nil. If there is an error
-// or the resource is not found, the observedResource will be returned containing information about the resource
-// and the problem.
-func (b *BaseObserver) LookupResource(ctx context.Context, identifier wait.ResourceIdentifier) (*unstructured.Unstructured, error) {
-	GVK, err := b.GVK(identifier.GroupKind)
+type baseObserver struct {
+	reader observer.ClusterReader
+	mapper meta.RESTMapper
+
+	resourceTypeObserver
+}
+
+func (o *baseObserver) Observe(ctx context.Context, identifier wait.ResourceIdentifier) *event.ObservedResource {
+	deployment, err := o.lookupResource(ctx, identifier)
+	if err != nil {
+		return handleObservedResourceError(identifier, err)
+	}
+	return o.ObserveObject(ctx, deployment)
+}
+
+func (o *baseObserver) lookupResource(ctx context.Context, identifier wait.ResourceIdentifier) (*unstructured.Unstructured, error) {
+	GVK, err := toGVK(o.mapper, identifier.GroupKind)
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +61,7 @@ func (b *BaseObserver) LookupResource(ctx context.Context, identifier wait.Resou
 	var u unstructured.Unstructured
 	u.SetGroupVersionKind(GVK)
 	key := keyForNamespacedResource(identifier)
-	err = b.Reader.Get(ctx, key, &u)
+	err = o.reader.Get(ctx, key, &u)
 	if err != nil {
 		return nil, err
 	}
@@ -63,8 +72,8 @@ func (b *BaseObserver) LookupResource(ctx context.Context, identifier wait.Resou
 // ObservedGeneratedResources provides a way to fetch the statuses for all resources of a given GroupKind
 // that match the selector in the provided resource. Typically, this is used to fetch the status of generated
 // resources.
-func (b *BaseObserver) ObserveGeneratedResources(ctx context.Context, observer observer.ResourceObserver, object *unstructured.Unstructured,
-	gk schema.GroupKind, selectorPath ...string) (event.ObservedResources, error) {
+func observeGeneratedResources(ctx context.Context, reader observer.ClusterReader, mapper meta.RESTMapper,
+	observer observer.ResourceObserver, object *unstructured.Unstructured, gk schema.GroupKind, selectorPath ...string) (event.ObservedResources, error) {
 	namespace := getNamespaceForNamespacedResource(object)
 	selector, err := toSelector(object, selectorPath...)
 	if err != nil {
@@ -72,12 +81,12 @@ func (b *BaseObserver) ObserveGeneratedResources(ctx context.Context, observer o
 	}
 
 	var objectList unstructured.UnstructuredList
-	gvk, err := b.GVK(gk)
+	gvk, err := toGVK(mapper, gk)
 	if err != nil {
 		return event.ObservedResources{}, err
 	}
 	objectList.SetGroupVersionKind(gvk)
-	err = b.Reader.ListNamespaceScoped(ctx, &objectList, namespace, selector)
+	err = reader.ListNamespaceScoped(ctx, &objectList, namespace, selector)
 	if err != nil {
 		return event.ObservedResources{}, err
 	}
@@ -92,9 +101,7 @@ func (b *BaseObserver) ObserveGeneratedResources(ctx context.Context, observer o
 	return observedObjects, nil
 }
 
-// handleObservedResourceError construct the appropriate ObservedResource
-// object based on the type of error.
-func (b *BaseObserver) handleObservedResourceError(identifier wait.ResourceIdentifier, err error) *event.ObservedResource {
+func handleObservedResourceError(identifier wait.ResourceIdentifier, err error) *event.ObservedResource {
 	if errors.IsNotFound(err) {
 		return &event.ObservedResource{
 			Identifier: identifier,
@@ -109,9 +116,8 @@ func (b *BaseObserver) handleObservedResourceError(identifier wait.ResourceIdent
 	}
 }
 
-// GVK looks up the GVK from a GroupKind using the rest mapper.
-func (b *BaseObserver) GVK(gk schema.GroupKind) (schema.GroupVersionKind, error) {
-	mapping, err := b.Mapper.RESTMapping(gk)
+func toGVK(mapper meta.RESTMapper, gk schema.GroupKind) (schema.GroupVersionKind, error) {
+	mapping, err := mapper.RESTMapping(gk)
 	if err != nil {
 		return schema.GroupVersionKind{}, err
 	}

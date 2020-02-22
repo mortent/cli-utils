@@ -8,14 +8,8 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/cli-utils/pkg/kstatus/observe/event"
-	"sigs.k8s.io/cli-utils/pkg/kstatus/status"
 	"sigs.k8s.io/cli-utils/pkg/kstatus/wait"
 )
-
-// ComputeStatusFunc is the function that the observer will delegate to for
-// computing status of the resource. This is set to use the status library
-// by default and changing it is probably only useful for testing.
-type ComputeStatusFunc func(u *unstructured.Unstructured) (*status.Result, error)
 
 // ResourceObserver is the main interface for observers. In this context,
 // an observer is an object that can fetch a resource of a specific
@@ -33,9 +27,4 @@ type ResourceObserver interface {
 	// ObserveObject is similar to Observe, but instead of looking up the
 	// resource based on an identifier, it will use the passed in resource.
 	ObserveObject(ctx context.Context, object *unstructured.Unstructured) *event.ObservedResource
-
-	// SetComputeStatusFunc can be used to set the function invoked by
-	// the observer to compute the status of a resource. By default this
-	// is set to use the status library. This is only used for testing.
-	SetComputeStatusFunc(statusFunc ComputeStatusFunc)
 }

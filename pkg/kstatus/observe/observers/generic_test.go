@@ -11,7 +11,6 @@ import (
 	"gotest.tools/assert"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"sigs.k8s.io/cli-utils/pkg/kstatus/observe/testutil"
 	"sigs.k8s.io/cli-utils/pkg/kstatus/status"
 	"sigs.k8s.io/cli-utils/pkg/kstatus/wait"
 )
@@ -58,12 +57,11 @@ func TestGenericObserver(t *testing.T) {
 
 	for tn, tc := range testCases {
 		t.Run(tn, func(t *testing.T) {
-			fakeReader := testutil.NewNoopObserverReader()
-			fakeMapper := testutil.NewFakeRESTMapper()
-			observer := NewGenericObserver(fakeReader, fakeMapper)
-			observer.SetComputeStatusFunc(func(u *unstructured.Unstructured) (*status.Result, error) {
-				return tc.result, tc.err
-			})
+			observer := genericObserver{
+				statusFunc: func(u *unstructured.Unstructured) (*status.Result, error) {
+					return tc.result, tc.err
+				},
+			}
 
 			object := &unstructured.Unstructured{}
 			object.SetGroupVersionKind(customGVK)

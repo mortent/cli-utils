@@ -11,17 +11,12 @@ import (
 	"sigs.k8s.io/cli-utils/pkg/kstatus/observe/event"
 	"sigs.k8s.io/cli-utils/pkg/kstatus/observe/observer"
 	"sigs.k8s.io/cli-utils/pkg/kstatus/status"
-	"sigs.k8s.io/cli-utils/pkg/kstatus/wait"
 )
 
 func NewGenericObserver(reader observer.ClusterReader, mapper meta.RESTMapper) observer.ResourceObserver {
-	return &genericObserver{
-		BaseObserver: BaseObserver{
-			Reader:            reader,
-			Mapper:            mapper,
-			computeStatusFunc: status.Compute,
-		},
-	}
+	return observerFactory(reader, mapper, &genericObserver{
+		statusFunc: status.Compute,
+	})
 }
 
 // genericObserver is an observer that will be used for any resource that
@@ -31,23 +26,15 @@ func NewGenericObserver(reader observer.ClusterReader, mapper meta.RESTMapper) o
 // generated resources and where status can be computed only based on the
 // resource itself.
 type genericObserver struct {
-	BaseObserver
+	statusFunc computeStatusFunc
 }
 
-var _ observer.ResourceObserver = &genericObserver{}
-
-func (d *genericObserver) Observe(ctx context.Context, identifier wait.ResourceIdentifier) *event.ObservedResource {
-	u, err := d.LookupResource(ctx, identifier)
-	if err != nil {
-		return d.handleObservedResourceError(identifier, err)
-	}
-	return d.ObserveObject(ctx, u)
-}
+var _ resourceTypeObserver = &genericObserver{}
 
 func (d *genericObserver) ObserveObject(_ context.Context, resource *unstructured.Unstructured) *event.ObservedResource {
 	identifier := toIdentifier(resource)
 
-	res, err := d.computeStatusFunc(resource)
+	res, err := d.statusFunc(resource)
 	if err != nil {
 		return &event.ObservedResource{
 			Identifier: identifier,

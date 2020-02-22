@@ -14,7 +14,9 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"sigs.k8s.io/cli-utils/pkg/kstatus/observe/event"
 	"sigs.k8s.io/cli-utils/pkg/kstatus/observe/testutil"
+	"sigs.k8s.io/cli-utils/pkg/kstatus/status"
 	"sigs.k8s.io/cli-utils/pkg/kstatus/wait"
 )
 
@@ -26,15 +28,28 @@ var (
 )
 
 func TestLookupResource(t *testing.T) {
+	name := "Foo"
+	namespace := "Bar"
 	deploymentIdentifier := wait.ResourceIdentifier{
 		GroupKind: deploymentGVK.GroupKind(),
-		Name:      "Foo",
-		Namespace: "Bar",
+		Name:      name,
+		Namespace: namespace,
 	}
+	deploymentResource := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"metadata": map[string]interface{}{
+				"name":      name,
+				"namespace": namespace,
+			},
+		},
+	}
+	deploymentResource.SetGroupVersionKind(deploymentGVK)
 
 	testCases := map[string]struct {
 		identifier         wait.ResourceIdentifier
 		readerErr          error
+		readerResource     *unstructured.Unstructured
+		expectedStatus     status.Status
 		expectErr          bool
 		expectedErrMessage string
 	}{
@@ -47,52 +62,59 @@ func TestLookupResource(t *testing.T) {
 				Name:      "Bar",
 				Namespace: "default",
 			},
+			expectedStatus:     status.UnknownStatus,
 			expectErr:          true,
 			expectedErrMessage: "",
 		},
 		"resource does not exist": {
-			identifier:         deploymentIdentifier,
-			readerErr:          errors.NewNotFound(deploymentGVR.GroupResource(), "Foo"),
-			expectErr:          true,
-			expectedErrMessage: "",
+			identifier:     deploymentIdentifier,
+			readerErr:      errors.NewNotFound(deploymentGVR.GroupResource(), "Foo"),
+			expectedStatus: status.NotFoundStatus,
+			expectErr:      false,
 		},
 		"getting resource fails": {
 			identifier:         deploymentIdentifier,
 			readerErr:          errors.NewInternalError(fmt.Errorf("this is a test")),
+			expectedStatus:     status.UnknownStatus,
 			expectErr:          true,
 			expectedErrMessage: "",
 		},
 		"getting resource succeeds": {
-			identifier: deploymentIdentifier,
+			identifier:     deploymentIdentifier,
+			readerResource: deploymentResource,
+			expectedStatus: status.CurrentStatus,
 		},
 	}
 
 	for tn, tc := range testCases {
 		t.Run(tn, func(t *testing.T) {
-			fakeReader := &fakeObserverReader{
-				getErr: tc.readerErr,
+			fakeReader := &fakeClusterReader{
+				getResource: tc.readerResource,
+				getErr:      tc.readerErr,
 			}
 			fakeMapper := testutil.NewFakeRESTMapper(deploymentGVK)
 
-			baseObserver := &BaseObserver{
-				Reader: fakeReader,
-				Mapper: fakeMapper,
-			}
+			observer := observerFactory(fakeReader, fakeMapper, &fakeResourceTypeObserver{})
 
-			u, err := baseObserver.LookupResource(context.Background(), tc.identifier)
+			observedResource := observer.Observe(context.Background(), tc.identifier)
+
+			assert.Equal(t, tc.identifier, observedResource.Identifier)
+			assert.Equal(t, tc.expectedStatus, observedResource.Status)
 
 			if tc.expectErr {
-				if err == nil {
+				if observedResource.Error == nil {
 					t.Errorf("expected error, but didn't get one")
 				} else {
-					assert.ErrorContains(t, err, tc.expectedErrMessage)
+					assert.ErrorContains(t, observedResource.Error, tc.expectedErrMessage)
 				}
 				return
 			}
 
-			assert.NilError(t, err)
+			assert.NilError(t, observedResource.Error)
 
-			assert.Equal(t, deploymentGVK, u.GroupVersionKind())
+			if observedResource.Resource != nil {
+				assert.Equal(t, deploymentGVK, observedResource.Resource.GroupVersionKind())
+			}
 		})
 	}
 }
@@ -191,7 +213,7 @@ spec:
 
 	for tn, tc := range testCases {
 		t.Run(tn, func(t *testing.T) {
-			fakeObserverReader := &fakeObserverReader{
+			fakeReader := &fakeClusterReader{
 				listResources: &unstructured.UnstructuredList{
 					Items: tc.listObjects,
 				},
@@ -202,12 +224,8 @@ spec:
 
 			object := testutil.YamlToUnstructured(t, tc.manifest)
 
-			observer := &BaseObserver{
-				Reader: fakeObserverReader,
-				Mapper: fakeMapper,
-			}
-
-			observedResources, err := observer.ObserveGeneratedResources(context.Background(), fakeResourceObserver, object, tc.gk, tc.path...)
+			observedResources, err := observeGeneratedResources(context.Background(), fakeReader, fakeMapper,
+				fakeResourceObserver, object, tc.gk, tc.path...)
 
 			if tc.expectError {
 				if err == nil {
@@ -224,5 +242,14 @@ spec:
 			assert.Equal(t, len(tc.listObjects), len(observedResources))
 			assert.Assert(t, sort.IsSorted(observedResources))
 		})
+	}
+}
+
+type fakeResourceTypeObserver struct{}
+
+func (f *fakeResourceTypeObserver) ObserveObject(_ context.Context, resource *unstructured.Unstructured) *event.ObservedResource {
+	return &event.ObservedResource{
+		Status:     status.CurrentStatus,
+		Identifier: toIdentifier(resource),
 	}
 }

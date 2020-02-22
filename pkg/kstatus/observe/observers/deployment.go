@@ -12,43 +12,33 @@ import (
 	"sigs.k8s.io/cli-utils/pkg/kstatus/observe/event"
 	"sigs.k8s.io/cli-utils/pkg/kstatus/observe/observer"
 	"sigs.k8s.io/cli-utils/pkg/kstatus/status"
-	"sigs.k8s.io/cli-utils/pkg/kstatus/wait"
 )
 
 func NewDeploymentObserver(reader observer.ClusterReader, mapper meta.RESTMapper, rsObserver observer.ResourceObserver) observer.ResourceObserver {
-	return &deploymentObserver{
-		BaseObserver: BaseObserver{
-			Reader:            reader,
-			Mapper:            mapper,
-			computeStatusFunc: status.Compute,
-		},
-		RsObserver: rsObserver,
-	}
+	return observerFactory(reader, mapper, &deploymentObserver{
+		reader:     reader,
+		mapper:     mapper,
+		rsObserver: rsObserver,
+	})
 }
 
 // deploymentObserver is an observer that can fetch Deployment resources
 // from the cluster, knows how to find any ReplicaSets belonging to the
 // Deployment, and compute status for the deployment.
 type deploymentObserver struct {
-	BaseObserver
+	reader observer.ClusterReader
 
-	RsObserver observer.ResourceObserver
+	mapper meta.RESTMapper
+
+	rsObserver observer.ResourceObserver
 }
 
-var _ observer.ResourceObserver = &deploymentObserver{}
-
-func (d *deploymentObserver) Observe(ctx context.Context, identifier wait.ResourceIdentifier) *event.ObservedResource {
-	deployment, err := d.LookupResource(ctx, identifier)
-	if err != nil {
-		return d.handleObservedResourceError(identifier, err)
-	}
-	return d.ObserveObject(ctx, deployment)
-}
+var _ resourceTypeObserver = &deploymentObserver{}
 
 func (d *deploymentObserver) ObserveObject(ctx context.Context, deployment *unstructured.Unstructured) *event.ObservedResource {
 	identifier := toIdentifier(deployment)
 
-	observedReplicaSets, err := d.ObserveGeneratedResources(ctx, d.RsObserver, deployment,
+	observedReplicaSets, err := observeGeneratedResources(ctx, d.reader, d.mapper, d.rsObserver, deployment,
 		appsv1.SchemeGroupVersion.WithKind("ReplicaSet").GroupKind(), "spec", "selector")
 	if err != nil {
 		return &event.ObservedResource{
@@ -63,7 +53,7 @@ func (d *deploymentObserver) ObserveObject(ctx context.Context, deployment *unst
 	// status for the deployment. But we do have the status and state for all
 	// ReplicaSets and Pods in the ObservedReplicaSets data structure, so the
 	// rules can be improved to take advantage of this information.
-	res, err := d.computeStatusFunc(deployment)
+	res, err := status.Compute(deployment)
 	if err != nil {
 		return &event.ObservedResource{
 			Identifier:         identifier,

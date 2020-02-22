@@ -12,43 +12,33 @@ import (
 	"sigs.k8s.io/cli-utils/pkg/kstatus/observe/event"
 	"sigs.k8s.io/cli-utils/pkg/kstatus/observe/observer"
 	"sigs.k8s.io/cli-utils/pkg/kstatus/status"
-	"sigs.k8s.io/cli-utils/pkg/kstatus/wait"
 )
 
 func NewStatefulSetObserver(reader observer.ClusterReader, mapper meta.RESTMapper, podObserver observer.ResourceObserver) observer.ResourceObserver {
-	return &statefulSetObserver{
-		BaseObserver: BaseObserver{
-			Reader:            reader,
-			Mapper:            mapper,
-			computeStatusFunc: status.Compute,
-		},
-		PodObserver: podObserver,
-	}
+	return observerFactory(reader, mapper, &statefulSetObserver{
+		reader:      reader,
+		mapper:      mapper,
+		podObserver: podObserver,
+	})
 }
 
 // StatefulObserver is an observer that can fetch StatefulSet resources
 // from the cluster, knows how to find any Pods belonging to the
 // StatefulSet, and compute status for the StatefulSet.
 type statefulSetObserver struct {
-	BaseObserver
+	reader observer.ClusterReader
 
-	PodObserver observer.ResourceObserver
+	mapper meta.RESTMapper
+
+	podObserver observer.ResourceObserver
 }
 
-var _ observer.ResourceObserver = &statefulSetObserver{}
-
-func (s *statefulSetObserver) Observe(ctx context.Context, identifier wait.ResourceIdentifier) *event.ObservedResource {
-	statefulSet, err := s.LookupResource(ctx, identifier)
-	if err != nil {
-		return s.handleObservedResourceError(identifier, err)
-	}
-	return s.ObserveObject(ctx, statefulSet)
-}
+var _ resourceTypeObserver = &statefulSetObserver{}
 
 func (s *statefulSetObserver) ObserveObject(ctx context.Context, statefulSet *unstructured.Unstructured) *event.ObservedResource {
 	identifier := toIdentifier(statefulSet)
 
-	observedPods, err := s.ObserveGeneratedResources(ctx, s.PodObserver, statefulSet,
+	observedPods, err := observeGeneratedResources(ctx, s.reader, s.mapper, s.podObserver, statefulSet,
 		v1.SchemeGroupVersion.WithKind("Pod").GroupKind(), "spec", "selector")
 	if err != nil {
 		return &event.ObservedResource{
@@ -59,7 +49,7 @@ func (s *statefulSetObserver) ObserveObject(ctx context.Context, statefulSet *un
 		}
 	}
 
-	res, err := s.computeStatusFunc(statefulSet)
+	res, err := status.Compute(statefulSet)
 	if err != nil {
 		return &event.ObservedResource{
 			Identifier:         identifier,
