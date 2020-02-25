@@ -15,7 +15,7 @@ import (
 // reason and message.
 func newInProgressCondition(reason, message string) Condition {
 	return Condition{
-		Type:    ConditionInProgress,
+		Type:    ConditionReconciling,
 		Status:  corev1.ConditionTrue,
 		Reason:  reason,
 		Message: message,

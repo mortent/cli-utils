@@ -172,7 +172,7 @@ func deploymentConditions(u *unstructured.Unstructured) (*Result, error) {
 				return &Result{
 					Status:     FailedStatus,
 					Message:    "Progress deadline exceeded",
-					Conditions: []Condition{{ConditionFailed, corev1.ConditionTrue, c.Reason, c.Message}},
+					Conditions: []Condition{{ConditionStalled, corev1.ConditionTrue, c.Reason, c.Message}},
 				}, nil
 			}
 			if c.Status == corev1.ConditionTrue && c.Reason == "NewReplicaSetAvailable" {
@@ -381,7 +381,7 @@ func podConditions(u *unstructured.Unstructured) (*Result, error) {
 					Status:  FailedStatus,
 					Message: message,
 					Conditions: []Condition{{
-						Type:    ConditionFailed,
+						Type:    ConditionStalled,
 						Status:  corev1.ConditionTrue,
 						Reason:  "PodFailed",
 						Message: fmt.Sprintf("Pod has completed, but not succeesfully."),
@@ -453,7 +453,7 @@ func jobConditions(u *unstructured.Unstructured) (*Result, error) {
 					Status:  FailedStatus,
 					Message: message,
 					Conditions: []Condition{{
-						ConditionFailed,
+						ConditionStalled,
 						corev1.ConditionTrue,
 						"JobFailed",
 						fmt.Sprintf("Job Failed. failed: %d/%d", failed, completions),

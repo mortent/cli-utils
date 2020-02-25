@@ -21,8 +21,8 @@
 //   res, err := status.Compute(resource)
 //
 // The package also defines a set of new conditions:
-//  * InProgress
-//  * Failed
+//  * Reconciling
+//  * Stalled
 // These conditions have been chosen to follow the
 // "abnormal-true" pattern where conditions should be set to true
 // for error/abnormal conditions and the absence of a condition means
