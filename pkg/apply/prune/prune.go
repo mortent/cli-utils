@@ -253,9 +253,10 @@ func (po *PruneOptions) Prune(currentObjects []*resource.Info, eventChannel chan
 	// Delete previous grouping objects.
 	for _, pastGroupInfo := range pastGroupingInfos {
 		if !po.DryRun {
+			propPolicy := metav1.DeletePropagationForeground
 			err = po.client.Resource(pastGroupInfo.Mapping.Resource).
 				Namespace(pastGroupInfo.Namespace).
-				Delete(pastGroupInfo.Name, &metav1.DeleteOptions{})
+				Delete(pastGroupInfo.Name, &metav1.DeleteOptions{PropagationPolicy: &propPolicy})
 			if err != nil {
 				return err
 			}

@@ -17,7 +17,7 @@ import (
 
 // AggregatorFactoryFunc defines the signature for the function the PollerEngine will use to
 // create a new StatusAggregator for each statusPollerRunner.
-type AggregatorFactoryFunc func(identifiers []wait.ResourceIdentifier) StatusAggregator
+type AggregatorFactoryFunc func(identifiers []wait.ResourceIdentifier, waitForDeletion bool) StatusAggregator
 
 // ClusterReaderFactoryFunc defines the signature for the function the PollerEngine will use to create
 // a new ClusterReader for each statusPollerRunner.
@@ -59,7 +59,7 @@ type PollerEngine struct {
 // all to reach a specific status.
 // The pollInterval specifies how often the engine should poll the cluster for the latest state of the resources.
 func (s *PollerEngine) Poll(ctx context.Context, identifiers []wait.ResourceIdentifier, pollInterval time.Duration,
-	pollUntilCancelled bool) <-chan event.Event {
+	pollUntilCancelled bool, waitForDeletion bool) <-chan event.Event {
 	eventChannel := make(chan event.Event)
 
 	go func() {
@@ -74,7 +74,7 @@ func (s *PollerEngine) Poll(ctx context.Context, identifiers []wait.ResourceIden
 			return
 		}
 		statusReaders, defaultStatusReader := s.StatusReadersFactoryFunc(clusterReader, s.Mapper)
-		aggregator := s.AggregatorFactoryFunc(identifiers)
+		aggregator := s.AggregatorFactoryFunc(identifiers, waitForDeletion)
 
 		runner := &statusPollerRunner{
 			ctx:                      ctx,

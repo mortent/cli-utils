@@ -15,6 +15,7 @@ import (
 	"sigs.k8s.io/cli-utils/pkg/kstatus/polling/engine"
 	"sigs.k8s.io/cli-utils/pkg/kstatus/polling/event"
 	"sigs.k8s.io/cli-utils/pkg/kstatus/polling/statusreaders"
+	"sigs.k8s.io/cli-utils/pkg/kstatus/status"
 	"sigs.k8s.io/cli-utils/pkg/kstatus/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -49,20 +50,22 @@ type StatusPoller struct {
 // cycle. The statusreaders responsible for computing status will rely on the cached data. This can dramatically reduce
 // the number of calls against the API server.
 func (s *StatusPoller) Poll(ctx context.Context, identifiers []wait.ResourceIdentifier, options Options) <-chan event.Event {
-	return s.engine.Poll(ctx, identifiers, options.PollInterval, options.StopOnCompleted)
+	return s.engine.Poll(ctx, identifiers, options.PollInterval, options.PollUntilCancelled, options.WaitForDeletion)
 }
 
 // Options contains the different parameters that can be used to adjust the
 // behavior of the StatusPoller.
 type Options struct {
-	// StopOnCompleted defines whether the engine should stop polling and close the
+	// PollUntilCancelled defines whether the engine should stop polling and close the
 	// event channel when the Aggregator implementation considers all resources to have reached
 	// the desired status.
-	StopOnCompleted bool
+	PollUntilCancelled bool
 
 	// PollInterval defines how often the PollerEngine should poll the cluster for the latest
 	// state of the resources.
 	PollInterval time.Duration
+
+	WaitForDeletion bool
 }
 
 // createStatusReaders creates an instance of all the statusreaders. This includes a set of statusreaders for
@@ -103,7 +106,10 @@ func clusterReaderFactoryFunc(useCache bool) engine.ClusterReaderFactoryFunc {
 // aggregatorFactoryFunc returns a factory function for creating an instance of the
 // StatusAggregator interface. Currently there is only one implementation.
 func aggregatorFactoryFunc() engine.AggregatorFactoryFunc {
-	return func(identifiers []wait.ResourceIdentifier) engine.StatusAggregator {
-		return aggregator.NewAllCurrentOrNotFoundStatusAggregator(identifiers)
+	return func(identifiers []wait.ResourceIdentifier, waitForDeletion bool) engine.StatusAggregator {
+		if waitForDeletion {
+			return aggregator.NewGenericAggregator(identifiers, status.NotFoundStatus)
+		}
+		return aggregator.NewGenericAggregator(identifiers, status.CurrentStatus)
 	}
 }

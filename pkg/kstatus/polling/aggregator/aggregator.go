@@ -9,22 +9,15 @@ import (
 	"sigs.k8s.io/cli-utils/pkg/kstatus/wait"
 )
 
-// BasicAggregator implements StatusAggregator.
-// Aggregate status will be Current when all polled
-// resources are either Current or NotFound.
-// TODO: Treating resources that doesn't exist as Current is
-// weird. But it kinda does make sense when we track
-// resources that are deleted/pruned. We should see if
-// there is a better way to handle this.
-type BasicAggregator struct {
+type GenericAggregator struct {
 	resourceCurrentStatus map[wait.ResourceIdentifier]status.Status
+	desiredStatus         status.Status
 }
 
-// NewBasicAggregator returns a BasicAggregator that will track
-// resources identified by the argument.
-func NewAllCurrentOrNotFoundStatusAggregator(identifiers []wait.ResourceIdentifier) *BasicAggregator {
-	aggregator := &BasicAggregator{
+func NewGenericAggregator(identifiers []wait.ResourceIdentifier, desiredStatus status.Status) *GenericAggregator {
+	aggregator := &GenericAggregator{
 		resourceCurrentStatus: make(map[wait.ResourceIdentifier]status.Status),
+		desiredStatus:         desiredStatus,
 	}
 	for _, id := range identifiers {
 		aggregator.resourceCurrentStatus[id] = status.UnknownStatus
@@ -32,46 +25,37 @@ func NewAllCurrentOrNotFoundStatusAggregator(identifiers []wait.ResourceIdentifi
 	return aggregator
 }
 
-// ResourceStatus is called whenever we have an observation of a resource. In this
-// case, we just keep the latest status so we can later compute the aggregate status
-// for all the resources.
-func (d *BasicAggregator) ResourceStatus(r *event.ResourceStatus) {
-	d.resourceCurrentStatus[r.Identifier] = r.Status
+func (g *GenericAggregator) ResourceStatus(r *event.ResourceStatus) {
+	g.resourceCurrentStatus[r.Identifier] = r.Status
 }
 
-// AggregateStatus computes the aggregate status for all the resources. In this
-// implementation of the Aggregator, we treat resources with the NotFound status as Current.
-func (d *BasicAggregator) AggregateStatus() status.Status {
-	// if we are not observing any resources, we consider status be Current.
-	if len(d.resourceCurrentStatus) == 0 {
-		return status.CurrentStatus
+func (g *GenericAggregator) AggregateStatus() status.Status {
+	if len(g.resourceCurrentStatus) == 0 {
+		return g.desiredStatus
 	}
 
-	allCurrentOrNotFound := true
+	allDesired := true
 	anyUnknown := false
-	for _, s := range d.resourceCurrentStatus {
+	for _, s := range g.resourceCurrentStatus {
 		if s == status.FailedStatus {
 			return status.FailedStatus
 		}
 		if s == status.UnknownStatus {
 			anyUnknown = true
 		}
-		if !(s == status.CurrentStatus || s == status.NotFoundStatus) {
-			allCurrentOrNotFound = false
+		if s != g.desiredStatus {
+			allDesired = false
 		}
 	}
 	if anyUnknown {
 		return status.UnknownStatus
 	}
-	if allCurrentOrNotFound {
-		return status.CurrentStatus
+	if allDesired {
+		return g.desiredStatus
 	}
 	return status.InProgressStatus
 }
 
-// Completed is used by the framework to decide if the set of resources has
-// all reached the desired status, i.e. the aggregate status. This is used to determine
-// when to stop polling resources.
-func (d *BasicAggregator) Completed() bool {
-	return d.AggregateStatus() == status.CurrentStatus
+func (g *GenericAggregator) Completed() bool {
+	return g.AggregateStatus() == g.desiredStatus
 }

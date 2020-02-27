@@ -15,6 +15,7 @@ import (
 	"sigs.k8s.io/cli-utils/cmd/destroy"
 	"sigs.k8s.io/cli-utils/cmd/diff"
 	"sigs.k8s.io/cli-utils/cmd/preview"
+	"sigs.k8s.io/cli-utils/cmd/status"
 
 	// This is here rather than in the libraries because of
 	// https://github.com/kubernetes-sigs/kustomize/issues/2060
@@ -51,7 +52,8 @@ func main() {
 	diffCmd := diff.NewCmdDiff(f, ioStreams)
 	updateHelp(names, diffCmd)
 	destroyCmd := destroy.NewCmdDestroy(f, ioStreams)
-	cmd.AddCommand(applyCmd, diffCmd, destroyCmd, previewCmd)
+	statusCmd := status.StatusCommand()
+	cmd.AddCommand(applyCmd, diffCmd, destroyCmd, previewCmd, statusCmd)
 
 	if err := cmd.Execute(); err != nil {
 		os.Exit(1)
