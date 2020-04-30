@@ -15,6 +15,7 @@
 package solver
 
 import (
+	"sigs.k8s.io/cli-utils/pkg/apply/info"
 	"time"
 
 	v1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -33,6 +34,7 @@ import (
 type TaskQueueSolver struct {
 	ApplyOptions *apply.ApplyOptions
 	PruneOptions *prune.PruneOptions
+	InfoHelper *info.InfoHelper
 }
 
 type Options struct {
@@ -55,6 +57,7 @@ func (t *TaskQueueSolver) BuildTaskQueue(infos []*resource.Info,
 		tasks = append(tasks, &task.ApplyTask{
 			Objects:      append(crdSplitRes.before, crdSplitRes.crds...),
 			ApplyOptions: t.ApplyOptions,
+			InfoHelper: t.InfoHelper,
 		},
 			taskrunner.NewWaitTask(
 				object.InfosToObjMetas(crdSplitRes.crds),
@@ -68,6 +71,7 @@ func (t *TaskQueueSolver) BuildTaskQueue(infos []*resource.Info,
 		&task.ApplyTask{
 			Objects:      remainingInfos,
 			ApplyOptions: t.ApplyOptions,
+			InfoHelper: t.InfoHelper,
 		},
 		&task.SendEventTask{
 			Event: event.Event{

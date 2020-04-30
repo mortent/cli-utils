@@ -6,6 +6,7 @@ package clusterreader
 import (
 	"context"
 	"fmt"
+	"k8s.io/client-go/restmapper"
 	"sync"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -54,7 +55,7 @@ func NewCachingClusterReader(reader client.Reader, mapper meta.RESTMapper, ident
 	for _, id := range identifiers {
 		// For every identifier, add the GroupVersionKind and namespace combination to the gvkNamespaceSet and
 		// check the genGroupKinds map for any generated resources that also should be included.
-		err := buildGvkNamespaceSet(mapper, []schema.GroupKind{id.GroupKind}, id.Namespace, gvkNamespaceSet)
+		err := buildGvkNamespaceSet([]schema.GroupKind{id.GroupKind}, id.Namespace, gvkNamespaceSet)
 		if err != nil {
 			return nil, err
 		}
@@ -67,19 +68,15 @@ func NewCachingClusterReader(reader client.Reader, mapper meta.RESTMapper, ident
 	}, nil
 }
 
-func buildGvkNamespaceSet(mapper meta.RESTMapper, gks []schema.GroupKind, namespace string, gvkNamespaceSet *gvkNamespaceSet) error {
+func buildGvkNamespaceSet(gks []schema.GroupKind, namespace string, gvkNamespaceSet *gvkNamespaceSet) error {
 	for _, gk := range gks {
-		mapping, err := mapper.RESTMapping(gk)
-		if err != nil {
-			return err
-		}
-		gvkNamespaceSet.add(gvkNamespace{
-			GVK:       mapping.GroupVersionKind,
+		gvkNamespaceSet.add(gkNamespace{
+			GroupKind:       gk,
 			Namespace: namespace,
 		})
 		genGKs, found := genGroupKinds[gk]
 		if found {
-			err := buildGvkNamespaceSet(mapper, genGKs, namespace, gvkNamespaceSet)
+			err := buildGvkNamespaceSet(genGKs, namespace, gvkNamespaceSet)
 			if err != nil {
 				return err
 			}
@@ -89,18 +86,18 @@ func buildGvkNamespaceSet(mapper meta.RESTMapper, gks []schema.GroupKind, namesp
 }
 
 type gvkNamespaceSet struct {
-	gvkNamespaces []gvkNamespace
-	seen          map[gvkNamespace]bool
+	gvkNamespaces []gkNamespace
+	seen          map[gkNamespace]bool
 }
 
 func newGnSet() *gvkNamespaceSet {
 	return &gvkNamespaceSet{
-		gvkNamespaces: make([]gvkNamespace, 0),
-		seen:          make(map[gvkNamespace]bool),
+		gvkNamespaces: make([]gkNamespace, 0),
+		seen:          make(map[gkNamespace]bool),
 	}
 }
 
-func (g *gvkNamespaceSet) add(gn gvkNamespace) {
+func (g *gvkNamespaceSet) add(gn gkNamespace) {
 	if _, found := g.seen[gn]; !found {
 		g.gvkNamespaces = append(g.gvkNamespaces, gn)
 		g.seen[gn] = true
@@ -126,12 +123,12 @@ type CachingClusterReader struct {
 	// should be included in the cache. This is computed based the resource identifiers
 	// passed in when the CachingClusterReader is created and augmented with other
 	// resource types needed to compute status (see genGroupKinds).
-	gns []gvkNamespace
+	gns []gkNamespace
 
 	// cache contains the resources found in the cluster for the given combination
 	// of GVK and namespace. Before each polling cycle, the framework will call the
 	// Sync function, which is responsible for repopulating the cache.
-	cache map[gvkNamespace]cacheEntry
+	cache map[gkNamespace]cacheEntry
 }
 
 type cacheEntry struct {
@@ -139,9 +136,9 @@ type cacheEntry struct {
 	err       error
 }
 
-// gvkNamespace contains information about a GroupVersionKind and a namespace.
-type gvkNamespace struct {
-	GVK       schema.GroupVersionKind
+// gkNamespace contains information about a GroupVersionKind and a namespace.
+type gkNamespace struct {
+	GroupKind       schema.GroupKind
 	Namespace string
 }
 
@@ -155,8 +152,8 @@ func (c *CachingClusterReader) Get(_ context.Context, key client.ObjectKey, obj 
 	if err != nil {
 		return err
 	}
-	gn := gvkNamespace{
-		GVK:       gvk,
+	gn := gkNamespace{
+		GroupKind:       gvk.GroupKind(),
 		Namespace: key.Namespace,
 	}
 	cacheEntry, found := c.cache[gn]
@@ -182,8 +179,8 @@ func (c *CachingClusterReader) ListNamespaceScoped(_ context.Context, list *unst
 	c.RLock()
 	defer c.RUnlock()
 	gvk := list.GroupVersionKind()
-	gn := gvkNamespace{
-		GVK:       gvk,
+	gn := gkNamespace{
+		GroupKind:       gvk.GroupKind(),
 		Namespace: namespace,
 	}
 
@@ -213,15 +210,21 @@ func (c *CachingClusterReader) ListClusterScoped(ctx context.Context, list *unst
 	return c.ListNamespaceScoped(ctx, list, "", selector)
 }
 
-// Sync loops over the list of gvkNamespace we know of, and uses list calls to fetch the resources.
+// Sync loops over the list of gkNamespace we know of, and uses list calls to fetch the resources.
 // This information populates the cache.
 func (c *CachingClusterReader) Sync(ctx context.Context) error {
 	c.Lock()
 	defer c.Unlock()
-	cache := make(map[gvkNamespace]cacheEntry)
+	cache := make(map[gkNamespace]cacheEntry)
 	for _, gn := range c.gns {
-		mapping, err := c.mapper.RESTMapping(gn.GVK.GroupKind())
+		mapping, err := c.mapper.RESTMapping(gn.GroupKind)
 		if err != nil {
+			if meta.IsNoMatchError(err) {
+				cache[gn] = cacheEntry{
+					err: err,
+				}
+				continue
+			}
 			return err
 		}
 		var listOptions []client.ListOption
@@ -229,7 +232,7 @@ func (c *CachingClusterReader) Sync(ctx context.Context) error {
 			listOptions = append(listOptions, client.InNamespace(gn.Namespace))
 		}
 		var list unstructured.UnstructuredList
-		list.SetGroupVersionKind(gn.GVK)
+		list.SetGroupVersionKind(mapping.GroupVersionKind)
 		err = c.reader.List(ctx, &list, listOptions...)
 		if err != nil {
 			// If we get an IsNotFound error here, it means the type
@@ -250,4 +253,10 @@ func (c *CachingClusterReader) Sync(ctx context.Context) error {
 	}
 	c.cache = cache
 	return nil
+}
+
+func (c *CachingClusterReader) refreshRESTMapper() {
+	if rm, ok := c.mapper.(*restmapper.DeferredDiscoveryRESTMapper); ok {
+		rm.Reset()
+	}
 }

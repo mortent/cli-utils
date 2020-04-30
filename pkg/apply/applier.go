@@ -6,6 +6,9 @@ package apply
 import (
 	"context"
 	"fmt"
+	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/client-go/restmapper"
+	"sigs.k8s.io/cli-utils/pkg/apply/info"
 	"sort"
 	"time"
 
@@ -122,10 +125,11 @@ func (a *Applier) newStatusPoller() (poller.Poller, error) {
 		return nil, errors.WrapPrefix(err, "error getting RESTConfig", 1)
 	}
 
-	mapper, err := a.factory.ToRESTMapper()
+	discoveryClient, err := a.factory.ToDiscoveryClient()
 	if err != nil {
-		return nil, errors.WrapPrefix(err, "error getting RESTMapper", 1)
+		return nil, err
 	}
+	mapper := restmapper.NewDeferredDiscoveryRESTMapper(discoveryClient)
 
 	c, err := client.New(config, client.Options{Scheme: scheme.Scheme, Mapper: mapper})
 	if err != nil {
@@ -135,14 +139,47 @@ func (a *Applier) newStatusPoller() (poller.Poller, error) {
 	return polling.NewStatusPoller(c, mapper), nil
 }
 
+func (a *Applier) readingObjects() ([]*resource.Info, error) {
+	r := a.ApplyOptions.Builder.
+		Local().
+		Unstructured().
+		Schema(a.ApplyOptions.Validator).
+		ContinueOnError().
+		NamespaceParam(a.ApplyOptions.Namespace).DefaultNamespace().
+		FilenameParam(a.ApplyOptions.EnforceNamespace, &a.ApplyOptions.DeleteOptions.FilenameOptions).
+		LabelSelectorParam(a.ApplyOptions.Selector).
+		Flatten().
+		Do()
+	if err := r.Err(); err != nil {
+		return nil, err
+	}
+
+	var offlineInfos []*resource.Info
+	err := r.Visit(func(info *resource.Info, err error) error {
+		gvk := info.Object.GetObjectKind().GroupVersionKind()
+		accessor, err := meta.Accessor(info.Object)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Resource: %s %s %s\n", gvk.GroupKind().String(), accessor.GetName(), accessor.GetNamespace())
+		offlineInfos = append(offlineInfos, info)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return offlineInfos, nil
+}
+
 // readAndPrepareObjects reads the resources that should be applied,
 // handles ordering of resources and sets up the grouping object
 // based on the provided grouping object template.
 func (a *Applier) readAndPrepareObjects() ([]*resource.Info, error) {
-	infos, err := a.ApplyOptions.GetObjects()
+	infos, err := a.readingObjects()
 	if err != nil {
 		return nil, err
 	}
+
 	resources, gots := splitInfos(infos)
 
 	if len(gots) == 0 {
@@ -226,6 +263,9 @@ func (a *Applier) Run(ctx context.Context, options Options) <-chan event.Event {
 		taskQueue := (&solver.TaskQueueSolver{
 			ApplyOptions: a.ApplyOptions,
 			PruneOptions: a.PruneOptions,
+			InfoHelper: &info.InfoHelper{
+				Factory: a.factory,
+			},
 		}).BuildTaskQueue(infos, solver.Options{
 			WaitForReconcile:        options.WaitForReconcile,
 			WaitForReconcileTimeout: options.WaitTimeout,

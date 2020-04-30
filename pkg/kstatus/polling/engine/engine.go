@@ -42,13 +42,11 @@ func (s *PollerEngine) Poll(ctx context.Context, identifiers []object.ObjMetadat
 
 	go func() {
 		defer close(eventChannel)
-
 		err := s.validate(options)
 		if err != nil {
 			handleError(eventChannel, err)
 			return
 		}
-
 		err = s.validateIdentifiers(identifiers)
 		if err != nil {
 			handleError(eventChannel, err)
@@ -103,6 +101,12 @@ func (s *PollerEngine) validateIdentifiers(identifiers []object.ObjMetadata) err
 	for _, id := range identifiers {
 		mapping, err := s.Mapper.RESTMapping(id.GroupKind)
 		if err != nil {
+			// If we can't find a match, just keep going. This can happen
+			// if CRDs and CRs are applied at the same time.
+			if meta.IsNoMatchError(err) {
+				continue
+			}
+			fmt.Println("Error validating identifier")
 			return err
 		}
 		if mapping.Scope.Name() == meta.RESTScopeNameNamespace && id.Namespace == "" {

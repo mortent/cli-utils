@@ -30,7 +30,7 @@ var (
 func TestSync(t *testing.T) {
 	testCases := map[string]struct {
 		identifiers    []object.ObjMetadata
-		expectedSynced []gvkNamespace
+		expectedSynced []gkNamespace
 	}{
 		"no identifiers": {
 			identifiers: []object.ObjMetadata{},
@@ -48,7 +48,7 @@ func TestSync(t *testing.T) {
 					Namespace: "Bar",
 				},
 			},
-			expectedSynced: []gvkNamespace{
+			expectedSynced: []gkNamespace{
 				{
 					GVK:       deploymentGVK,
 					Namespace: "Foo",
@@ -153,7 +153,7 @@ func TestSync_Errors(t *testing.T) {
 			}
 			assert.NilError(t, err)
 
-			cacheEntry, found := clusterReader.cache[gvkNamespace{
+			cacheEntry, found := clusterReader.cache[gkNamespace{
 				GVK: apiextv1.SchemeGroupVersion.WithKind("CustomResourceDefinition"),
 			}]
 			assert.Check(t, found)
@@ -162,7 +162,7 @@ func TestSync_Errors(t *testing.T) {
 	}
 }
 
-func sortGVKNamespaces(gvkNamespaces []gvkNamespace) {
+func sortGVKNamespaces(gvkNamespaces []gkNamespace) {
 	sort.Slice(gvkNamespaces, func(i, j int) bool {
 		if gvkNamespaces[i].GVK.String() != gvkNamespaces[j].GVK.String() {
 			return gvkNamespaces[i].GVK.String() < gvkNamespaces[j].GVK.String()
@@ -172,7 +172,7 @@ func sortGVKNamespaces(gvkNamespaces []gvkNamespace) {
 }
 
 type fakeReader struct {
-	syncedGVKNamespaces []gvkNamespace
+	syncedGVKNamespaces []gkNamespace
 	err                 error
 }
 
@@ -191,7 +191,7 @@ func (f *fakeReader) List(_ context.Context, list runtime.Object, opts ...client
 	}
 
 	gvk := list.GetObjectKind().GroupVersionKind()
-	f.syncedGVKNamespaces = append(f.syncedGVKNamespaces, gvkNamespace{
+	f.syncedGVKNamespaces = append(f.syncedGVKNamespaces, gkNamespace{
 		GVK:       gvk,
 		Namespace: namespace,
 	})

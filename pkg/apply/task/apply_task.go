@@ -7,6 +7,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/cli-runtime/pkg/resource"
 	"k8s.io/kubectl/pkg/cmd/apply"
+	"sigs.k8s.io/cli-utils/pkg/apply/info"
 	"sigs.k8s.io/cli-utils/pkg/apply/taskrunner"
 	"sigs.k8s.io/cli-utils/pkg/object"
 )
@@ -15,6 +16,7 @@ import (
 // by using the ApplyOptions.
 type ApplyTask struct {
 	ApplyOptions applyOptions
+	InfoHelper *info.InfoHelper
 	Objects      []*resource.Info
 	DryRun       bool
 }
@@ -43,8 +45,15 @@ type applyOptions interface {
 func (a *ApplyTask) Start(taskContext *taskrunner.TaskContext) {
 	go func() {
 		a.setDryRunField()
+		err := a.InfoHelper.FixInfos(a.Objects)
+		if err != nil {
+			taskContext.TaskChannel() <- taskrunner.TaskResult{
+				Err: err,
+			}
+			return
+		}
 		a.ApplyOptions.SetObjects(a.Objects)
-		err := a.ApplyOptions.Run()
+		err = a.ApplyOptions.Run()
 		for _, info := range a.Objects {
 			id := object.InfoToObjMeta(info)
 			acc, _ := meta.Accessor(info.Object)

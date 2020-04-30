@@ -51,7 +51,7 @@ vet:
 	go vet ./...
 
 build:
-	go build -o bin/kapply sigs.k8s.io/cli-utils/cmd;
+	go build -mod=vendor -o bin/kapply sigs.k8s.io/cli-utils/cmd;
 	mv bin/kapply $(MYGOBIN)
 
 build-with-race-detector:
