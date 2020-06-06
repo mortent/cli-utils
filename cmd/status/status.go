@@ -9,118 +9,103 @@ import (
 
 	"github.com/go-errors/errors"
 	"github.com/spf13/cobra"
-	"k8s.io/apimachinery/pkg/runtime"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
-	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 	"sigs.k8s.io/cli-utils/cmd/status/printers"
+	"sigs.k8s.io/cli-utils/pkg/common"
 	"sigs.k8s.io/cli-utils/pkg/kstatus/polling"
 	"sigs.k8s.io/cli-utils/pkg/kstatus/polling/aggregator"
 	"sigs.k8s.io/cli-utils/pkg/kstatus/polling/collector"
 	"sigs.k8s.io/cli-utils/pkg/kstatus/polling/event"
 	"sigs.k8s.io/cli-utils/pkg/kstatus/status"
-	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
-	"sigs.k8s.io/kustomize/kyaml/kio"
+	"sigs.k8s.io/cli-utils/pkg/manifestreader"
+	"sigs.k8s.io/cli-utils/pkg/object"
+	"sigs.k8s.io/cli-utils/pkg/util/factory"
 )
 
-var (
-	scheme = runtime.NewScheme()
-)
-
-//nolint:gochecknoinits
-func init() {
-	_ = clientgoscheme.AddToScheme(scheme)
-}
-
-func GetStatusRunner() *StatusRunner {
-	r := &StatusRunner{}
+func GetStatusRunner(f cmdutil.Factory, ioStreams genericclioptions.IOStreams) *StatusRunner {
+	r := &StatusRunner{
+		factory:   f,
+		ioStreams: ioStreams,
+	}
 	c := &cobra.Command{
-		Use:  "status DIR...",
+		Use:  "status DIR",
 		RunE: r.runE,
 	}
-	c.Flags().BoolVar(&r.IncludeSubpackages, "include-subpackages", true,
-		"also print resources from subpackages.")
-	c.Flags().DurationVar(&r.Interval, "interval", 2*time.Second,
-		"check every n seconds. Default is every 2 seconds.")
-	c.Flags().DurationVar(&r.Timeout, "timeout", 60*time.Second,
-		"give up after n seconds. Default is 60 seconds.")
-	c.Flags().BoolVar(&r.PollForever, "poll-forever", false,
-		"keep polling forever.")
-	c.Flags().StringVar(&r.Output, "output", "table", "output format.")
-	c.Flags().BoolVar(&r.WaitForDeletion, "wait-for-deletion", false,
-		"wait for all resources to be deleted instead of reconciled.")
+	c.Flags().DurationVar(&r.period, "poll-period", 2*time.Second,
+		"Polling period for resource statuses.")
+	c.Flags().BoolVar(&r.pollForever, "poll-forever", false,
+		"Keep polling forever.")
+	c.Flags().StringVar(&r.output, "output", "table", "Output format.")
+	c.Flags().BoolVar(&r.waitForDeletion, "wait-for-deletion", false,
+		"Wait for all resources to be deleted")
+	c.Flags().DurationVar(&r.timeout, "timeout", time.Minute,
+		"Timeout threshold for waiting for all resources to reach the desired status")
 
-	r.Command = c
+	r.command = c
 	return r
 }
 
-func StatusCommand() *cobra.Command {
-	return GetStatusRunner().Command
+func StatusCommand(f cmdutil.Factory, ioStreams genericclioptions.IOStreams) *cobra.Command {
+	return GetStatusRunner(f, ioStreams).command
 }
 
 // WaitRunner captures the parameters for the command and contains
 // the run function.
 type StatusRunner struct {
-	IncludeSubpackages bool
-	Interval           time.Duration
-	Timeout            time.Duration
-	PollForever        bool
-	WaitForDeletion    bool
-	Output             string
-	Command            *cobra.Command
+	command   *cobra.Command
+	ioStreams genericclioptions.IOStreams
+	factory   cmdutil.Factory
+
+	period          time.Duration
+	timeout         time.Duration
+	pollForever     bool
+	output          string
+	waitForDeletion bool
 }
 
 // runE implements the logic of the command and will call the Wait command in
 // the wait package, use a ResourceStatusCollector to capture the events from
 // the channel, and the tablePrinter to display the information.
-func (r *StatusRunner) runE(c *cobra.Command, args []string) error {
-	config := ctrl.GetConfigOrDie()
-	mapper, err := apiutil.NewDiscoveryRESTMapper(config)
+func (r *StatusRunner) runE(cmd *cobra.Command, args []string) error {
+	_, err := common.DemandOneDirectory(args)
 	if err != nil {
-		return errors.WrapPrefix(err, "error creating rest mapper", 1)
+		return err
 	}
 
-	k8sClient, err := client.New(config, client.Options{Scheme: scheme,
-		Mapper: mapper})
+	var reader manifestreader.ManifestReader
+	readerOptions := manifestreader.ReaderOptions{
+		Factory:   r.factory,
+		Namespace: metav1.NamespaceDefault,
+	}
+	if len(args) == 0 {
+		reader = &manifestreader.StreamManifestReader{
+			ReaderName:    "stdin",
+			Reader:        cmd.InOrStdin(),
+			ReaderOptions: readerOptions,
+		}
+	} else {
+		reader = &manifestreader.PathManifestReader{
+			Path:          args[0],
+			ReaderOptions: readerOptions,
+		}
+	}
+	infos, err := reader.Read()
 	if err != nil {
-		return errors.WrapPrefix(err, "error creating client", 1)
+		return err
 	}
 
-	poller := polling.NewStatusPoller(k8sClient, mapper)
+	identifiers := object.InfosToObjMetas(infos)
 
-	captureFilter := &CaptureIdentifiersFilter{
-		Mapper: mapper,
-	}
-	filters := []kio.Filter{captureFilter}
-
-	var inputs []kio.Reader
-	for _, a := range args {
-		inputs = append(inputs, kio.LocalPackageReader{
-			PackagePath:        a,
-			IncludeSubpackages: r.IncludeSubpackages,
-		})
-	}
-	if len(inputs) == 0 {
-		inputs = append(inputs, &kio.ByteReader{Reader: c.InOrStdin()})
-	}
-
-	err = kio.Pipeline{
-		Inputs:  inputs,
-		Filters: filters,
-	}.Execute()
+	statusPoller, err := factory.NewStatusPoller(r.factory)
 	if err != nil {
-		return errors.WrapPrefix(err, "error reading manifests", 1)
+		return err
 	}
 
-	coll := collector.NewResourceStatusCollector(captureFilter.Identifiers)
+	coll := collector.NewResourceStatusCollector(identifiers)
 	stop := make(chan struct{})
-	ioStreams := genericclioptions.IOStreams{
-		In:     c.InOrStdin(),
-		Out:    c.OutOrStdout(),
-		ErrOut: c.OutOrStderr(),
-	}
-	printer, err := printers.CreatePrinter(r.Output, coll, ioStreams)
+	printer, err := printers.CreatePrinter(r.output, coll, r.ioStreams)
 	if err != nil {
 		return errors.WrapPrefix(err, "error creating printer", 1)
 	}
@@ -129,23 +114,23 @@ func (r *StatusRunner) runE(c *cobra.Command, args []string) error {
 	ctx := context.Background()
 
 	var completed <-chan struct{}
-	if r.PollForever {
-		eventChannel := poller.Poll(ctx, captureFilter.Identifiers, polling.Options{
-			PollInterval: r.Interval,
+	if r.pollForever {
+		eventChannel := statusPoller.Poll(ctx, identifiers, polling.Options{
+			PollInterval: r.period,
 			UseCache:     true,
 		})
 		completed = coll.Listen(eventChannel)
 	} else {
-		ctx, cancel := context.WithTimeout(ctx, r.Timeout)
+		ctx, cancel := context.WithTimeout(ctx, r.timeout)
 
 		var desiredStatus status.Status
-		if r.WaitForDeletion {
+		if r.waitForDeletion {
 			desiredStatus = status.NotFoundStatus
 		} else {
 			desiredStatus = status.CurrentStatus
 		}
-		eventChannel := poller.Poll(ctx, captureFilter.Identifiers, polling.Options{
-			PollInterval: r.Interval,
+		eventChannel := statusPoller.Poll(ctx, identifiers, polling.Options{
+			PollInterval: r.period,
 			UseCache:     true,
 		})
 		completed = coll.ListenWithObserver(eventChannel, getNotifierFunc(cancel, desiredStatus))
