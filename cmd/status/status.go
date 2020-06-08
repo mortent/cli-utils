@@ -5,6 +5,7 @@ package status
 
 import (
 	"context"
+	"sigs.k8s.io/cli-utils/pkg/resourceset"
 	"time"
 
 	"github.com/go-errors/errors"
@@ -95,6 +96,9 @@ func (r *StatusRunner) runE(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+
+	resourceSet := resourceset.NewResourceSet(infos)
+
 
 	identifiers := object.InfosToObjMetas(infos)
 
