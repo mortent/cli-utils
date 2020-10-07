@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -65,6 +66,20 @@ var (
 			basePath:    "/namespaces/%s/deployments",
 			factoryFunc: func() runtime.Object { return &appsv1.Deployment{} },
 		},
+		"clusterrole": {
+			manifest: `
+  kind: ClusterRole
+  apiVersion: rbac.authorization.k8s.io/v1
+  metadata:
+    name: clusterrole
+  rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "watch", "list"]
+`,
+			basePath:    "/clusterroles",
+			factoryFunc: func() runtime.Object { return &rbacv1.ClusterRole{} },
+		},
 	}
 )
 
@@ -104,8 +119,6 @@ func TestApplier(t *testing.T) {
 				resources["inventoryObject"],
 			},
 			handlers: []handler{
-				&nsHandler{},
-				&inventoryObjectHandler{},
 				&genericHandler{
 					resourceInfo: resources["deployment"],
 					namespace:    "default",
@@ -134,8 +147,6 @@ func TestApplier(t *testing.T) {
 				resources["inventoryObject"],
 			},
 			handlers: []handler{
-				&nsHandler{},
-				&inventoryObjectHandler{},
 				&genericHandler{
 					resourceInfo: resources["deployment"],
 					namespace:    "default",
@@ -143,20 +154,6 @@ func TestApplier(t *testing.T) {
 			},
 			reconcileTimeout: time.Minute,
 			statusEvents: []pollevent.Event{
-				{
-					EventType: pollevent.ResourceUpdateEvent,
-					Resource: &pollevent.ResourceStatus{
-						Identifier: object.ObjMetadata{
-							Name:      "foo-dcf2c498",
-							Namespace: "default",
-							GroupKind: schema.GroupKind{
-								Group: "",
-								Kind:  "ConfigMap",
-							},
-						},
-						Status: status.CurrentStatus,
-					},
-				},
 				{
 					EventType: pollevent.ResourceUpdateEvent,
 					Resource: &pollevent.ResourceStatus{
@@ -187,6 +184,65 @@ func TestApplier(t *testing.T) {
 				{
 					eventType:       event.StatusType,
 					statusEventType: pollevent.ResourceUpdateEvent,
+				},
+				{
+					eventType:       event.StatusType,
+					statusEventType: pollevent.ResourceUpdateEvent,
+				},
+				{
+					eventType:       event.StatusType,
+					statusEventType: pollevent.CompletedEvent,
+				},
+			},
+		},
+		"apply with cluster-scoped resource": {
+			namespace: "default",
+			resources: []resourceInfo{
+				resources["deployment"],
+				resources["clusterrole"],
+				resources["inventoryObject"],
+			},
+			handlers: []handler{
+				&genericHandler{
+					resourceInfo: resources["deployment"],
+					namespace:    "default",
+				},
+				&genericHandler{
+					resourceInfo: resources["clusterrole"],
+				},
+			},
+			reconcileTimeout: time.Minute,
+			statusEvents: []pollevent.Event{
+				{
+					EventType: pollevent.ResourceUpdateEvent,
+					Resource: &pollevent.ResourceStatus{
+						Identifier: toIdentifier(t, resources["clusterrole"], ""),
+						Status:     status.CurrentStatus,
+					},
+				},
+				{
+					EventType: pollevent.ResourceUpdateEvent,
+					Resource: &pollevent.ResourceStatus{
+						Identifier: toIdentifier(t, resources["deployment"], "default"),
+						Status:     status.CurrentStatus,
+					},
+				},
+			},
+			expectedEventTypes: []expectedEvent{
+				{
+					eventType: event.InitType,
+				},
+				{
+					eventType:      event.ApplyType,
+					applyEventType: event.ApplyEventResourceUpdate,
+				},
+				{
+					eventType:      event.ApplyType,
+					applyEventType: event.ApplyEventResourceUpdate,
+				},
+				{
+					eventType:      event.ApplyType,
+					applyEventType: event.ApplyEventCompleted,
 				},
 				{
 					eventType:       event.StatusType,
@@ -251,7 +307,9 @@ func TestApplier(t *testing.T) {
 				events = append(events, e)
 			}
 
-			assert.Equal(t, len(tc.expectedEventTypes), len(events))
+			if !assert.Equal(t, len(tc.expectedEventTypes), len(events)) {
+				t.FailNow()
+			}
 
 			for i, e := range events {
 				expected := tc.expectedEventTypes[i]
@@ -617,7 +675,12 @@ func (g *genericHandler) handle(t *testing.T, req *http.Request) (*http.Response
 		return nil, false, err
 	}
 
-	basePath := fmt.Sprintf(g.resourceInfo.basePath, g.namespace)
+	var basePath string
+	if g.namespace == "" {
+		basePath = g.resourceInfo.basePath
+	} else {
+		basePath = fmt.Sprintf(g.resourceInfo.basePath, g.namespace)
+	}
 	resourcePath := path.Join(basePath, accessor.GetName())
 
 	if req.URL.Path == resourcePath && req.Method == http.MethodGet {
@@ -634,10 +697,12 @@ func (g *genericHandler) handle(t *testing.T, req *http.Request) (*http.Response
 
 // inventoryObjectHandler knows how to handle requests on the inventory objects.
 // It knows how to handle creation, list and get requests for inventory objects.
+// nolint:unused
 type inventoryObjectHandler struct {
 	inventoryObj *v1.ConfigMap
 }
 
+// nolint:unused
 var (
 	cmPathRegex     = regexp.MustCompile(`^/namespaces/([^/]+)/configmaps$`)
 	invObjNameRegex = regexp.MustCompile(`^[a-zA-Z]+-[a-z0-9]+$`)
@@ -692,8 +757,10 @@ func (i *inventoryObjectHandler) handle(t *testing.T, req *http.Request) (*http.
 // every requested namespace exists. It simply fetches the name of the requested
 // namespace from the url and creates a new namespace type with the provided
 // name for the response.
+// nolint:unused
 type nsHandler struct{}
 
+// nolint:unused
 var (
 	nsPathRegex = regexp.MustCompile(`/api/v1/namespaces/([^/]+)`)
 )
