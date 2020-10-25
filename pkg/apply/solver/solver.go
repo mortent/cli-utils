@@ -23,20 +23,20 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/kubectl/pkg/cmd/util"
 	"sigs.k8s.io/cli-utils/pkg/apply/event"
 	"sigs.k8s.io/cli-utils/pkg/apply/info"
 	"sigs.k8s.io/cli-utils/pkg/apply/prune"
 	"sigs.k8s.io/cli-utils/pkg/apply/task"
 	"sigs.k8s.io/cli-utils/pkg/apply/taskrunner"
 	"sigs.k8s.io/cli-utils/pkg/common"
+	"sigs.k8s.io/cli-utils/pkg/factory"
 	"sigs.k8s.io/cli-utils/pkg/object"
 )
 
 type TaskQueueSolver struct {
 	PruneOptions *prune.PruneOptions
 	InfoHelper   info.InfoHelper
-	Factory      util.Factory
+	Factory      factory.Factory
 	Mapper       meta.RESTMapper
 }
 

@@ -15,6 +15,7 @@ import (
 	"sigs.k8s.io/cli-utils/cmd/status/printers"
 	"sigs.k8s.io/cli-utils/pkg/apply/poller"
 	"sigs.k8s.io/cli-utils/pkg/common"
+	clifactory "sigs.k8s.io/cli-utils/pkg/factory"
 	"sigs.k8s.io/cli-utils/pkg/inventory"
 	"sigs.k8s.io/cli-utils/pkg/kstatus/polling"
 	"sigs.k8s.io/cli-utils/pkg/kstatus/polling/aggregator"
@@ -63,7 +64,7 @@ type StatusRunner struct {
 	timeout   time.Duration
 	output    string
 
-	pollerFactoryFunc func(cmdutil.Factory) (poller.Poller, error)
+	pollerFactoryFunc func(clifactory.Factory) (poller.Poller, error)
 }
 
 // runE implements the logic of the command and will delegate to the
@@ -191,6 +192,6 @@ func allKnownNotifierFunc(cancelFunc context.CancelFunc) collector.ObserverFunc 
 	}
 }
 
-func pollerFactoryFunc(f cmdutil.Factory) (poller.Poller, error) {
+func pollerFactoryFunc(f clifactory.Factory) (poller.Poller, error) {
 	return factory.NewStatusPoller(f)
 }

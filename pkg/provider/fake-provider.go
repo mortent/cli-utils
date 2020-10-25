@@ -8,27 +8,27 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/kubectl/pkg/cmd/util"
+	"sigs.k8s.io/cli-utils/pkg/factory"
 	"sigs.k8s.io/cli-utils/pkg/inventory"
 	"sigs.k8s.io/cli-utils/pkg/manifestreader"
 	"sigs.k8s.io/cli-utils/pkg/object"
 )
 
 type FakeProvider struct {
-	factory   util.Factory
+	factory   factory.Factory
 	InvClient *inventory.FakeInventoryClient
 }
 
 var _ Provider = &FakeProvider{}
 
-func NewFakeProvider(f util.Factory, objs []object.ObjMetadata) *FakeProvider {
+func NewFakeProvider(f factory.Factory, objs []object.ObjMetadata) *FakeProvider {
 	return &FakeProvider{
 		factory:   f,
 		InvClient: inventory.NewFakeInventoryClient(objs),
 	}
 }
 
-func (f *FakeProvider) Factory() util.Factory {
+func (f *FakeProvider) Factory() factory.Factory {
 	return f.factory
 }
 

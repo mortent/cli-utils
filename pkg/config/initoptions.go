@@ -13,8 +13,8 @@ import (
 
 	"github.com/google/uuid"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
-	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 	"sigs.k8s.io/cli-utils/pkg/common"
+	"sigs.k8s.io/cli-utils/pkg/factory"
 	"sigs.k8s.io/cli-utils/pkg/inventory/configmap"
 	"sigs.k8s.io/kustomize/kyaml/kio"
 	"sigs.k8s.io/kustomize/kyaml/kio/filters"
@@ -27,7 +27,7 @@ const (
 // InitOptions contains the fields necessary to generate a
 // inventory object template ConfigMap.
 type InitOptions struct {
-	factory cmdutil.Factory
+	factory factory.Factory
 
 	ioStreams genericclioptions.IOStreams
 	// Template string; must be a valid k8s resource.
@@ -40,7 +40,7 @@ type InitOptions struct {
 	InventoryID string
 }
 
-func NewInitOptions(f cmdutil.Factory, ioStreams genericclioptions.IOStreams) *InitOptions {
+func NewInitOptions(f factory.Factory, ioStreams genericclioptions.IOStreams) *InitOptions {
 	return &InitOptions{
 		factory:   f,
 		ioStreams: ioStreams,

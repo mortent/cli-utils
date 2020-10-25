@@ -9,8 +9,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/cli-runtime/pkg/resource"
-	"k8s.io/kubectl/pkg/cmd/util"
 	"sigs.k8s.io/cli-utils/pkg/apply/solver"
+	"sigs.k8s.io/cli-utils/pkg/factory"
 	"sigs.k8s.io/cli-utils/pkg/inventory"
 	"sigs.k8s.io/cli-utils/pkg/object"
 	"sigs.k8s.io/kustomize/kyaml/kio/filters"
@@ -23,7 +23,7 @@ import (
 // the namespace set) on whether it is namespace or cluster scoped. It does
 // this by first checking the RESTMapper, and it there is not match there,
 // it will look for CRDs in the provided Infos.
-func SetNamespaces(factory util.Factory, infos []*resource.Info,
+func SetNamespaces(factory factory.Factory, infos []*resource.Info,
 	defaultNamespace string, enforceNamespace bool) error {
 	mapper, err := factory.ToRESTMapper()
 	if err != nil {

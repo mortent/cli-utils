@@ -12,11 +12,11 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/cli-runtime/pkg/resource"
 	"k8s.io/klog"
-	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 	"k8s.io/kubectl/pkg/util"
 	"k8s.io/kubectl/pkg/validation"
 	"sigs.k8s.io/cli-utils/pkg/apply/info"
 	"sigs.k8s.io/cli-utils/pkg/common"
+	"sigs.k8s.io/cli-utils/pkg/factory"
 	"sigs.k8s.io/cli-utils/pkg/object"
 	"sigs.k8s.io/cli-utils/pkg/ordering"
 )
@@ -59,7 +59,7 @@ var _ InventoryClient = &ClusterInventoryClient{}
 
 // NewInventoryClient returns a concrete implementation of the
 // InventoryClient interface or an error.
-func NewInventoryClient(factory cmdutil.Factory, invFunc InventoryFactoryFunc) (*ClusterInventoryClient, error) {
+func NewInventoryClient(factory factory.Factory, invFunc InventoryFactoryFunc) (*ClusterInventoryClient, error) {
 	var err error
 	mapper, err := factory.ToRESTMapper()
 	if err != nil {

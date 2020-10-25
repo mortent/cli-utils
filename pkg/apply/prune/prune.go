@@ -22,9 +22,9 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/klog"
-	"k8s.io/kubectl/pkg/cmd/util"
 	"sigs.k8s.io/cli-utils/pkg/apply/event"
 	"sigs.k8s.io/cli-utils/pkg/common"
+	"sigs.k8s.io/cli-utils/pkg/factory"
 	"sigs.k8s.io/cli-utils/pkg/inventory"
 	"sigs.k8s.io/cli-utils/pkg/object"
 	"sigs.k8s.io/cli-utils/pkg/ordering"
@@ -51,7 +51,7 @@ func NewPruneOptions() *PruneOptions {
 	return po
 }
 
-func (po *PruneOptions) Initialize(factory util.Factory, invClient inventory.InventoryClient) error {
+func (po *PruneOptions) Initialize(factory factory.Factory, invClient inventory.InventoryClient) error {
 	var err error
 	// Client/Builder fields from the Factory.
 	po.client, err = factory.DynamicClient()

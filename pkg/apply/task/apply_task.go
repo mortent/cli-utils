@@ -13,12 +13,12 @@ import (
 	"k8s.io/cli-runtime/pkg/resource"
 	"k8s.io/kubectl/pkg/cmd/apply"
 	"k8s.io/kubectl/pkg/cmd/delete"
-	"k8s.io/kubectl/pkg/cmd/util"
 	"k8s.io/kubectl/pkg/util/slice"
 	"sigs.k8s.io/cli-utils/pkg/apply/event"
 	"sigs.k8s.io/cli-utils/pkg/apply/info"
 	"sigs.k8s.io/cli-utils/pkg/apply/taskrunner"
 	"sigs.k8s.io/cli-utils/pkg/common"
+	"sigs.k8s.io/cli-utils/pkg/factory"
 	"sigs.k8s.io/cli-utils/pkg/object"
 )
 
@@ -38,7 +38,7 @@ type applyOptions interface {
 // ApplyTask applies the given Objects to the cluster
 // by using the ApplyOptions.
 type ApplyTask struct {
-	Factory        util.Factory
+	Factory        factory.Factory
 	InfoHelper     info.InfoHelper
 	Mapper         meta.RESTMapper
 	Objects        []*unstructured.Unstructured
@@ -142,7 +142,7 @@ func (a *ApplyTask) Start(taskContext *taskrunner.TaskContext) {
 	}()
 }
 
-func newApplyOptions(eventChannel chan event.Event, strategy common.DryRunStrategy, factory util.Factory) (applyOptions, error) {
+func newApplyOptions(eventChannel chan event.Event, strategy common.DryRunStrategy, factory factory.Factory) (applyOptions, error) {
 	discovery, err := factory.ToDiscoveryClient()
 	if err != nil {
 		return nil, err

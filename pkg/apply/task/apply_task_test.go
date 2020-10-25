@@ -12,10 +12,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/cli-runtime/pkg/resource"
-	"k8s.io/kubectl/pkg/cmd/util"
 	"sigs.k8s.io/cli-utils/pkg/apply/event"
 	"sigs.k8s.io/cli-utils/pkg/apply/taskrunner"
 	"sigs.k8s.io/cli-utils/pkg/common"
+	"sigs.k8s.io/cli-utils/pkg/factory"
 	"sigs.k8s.io/cli-utils/pkg/object"
 	"sigs.k8s.io/cli-utils/pkg/testutil"
 )
@@ -78,7 +78,7 @@ func TestApplyTask_FetchGeneration(t *testing.T) {
 			objs := toUnstructureds(tc.rss)
 
 			oldAO := applyOptionsFactoryFunc
-			applyOptionsFactoryFunc = func(chan event.Event, common.DryRunStrategy, util.Factory) (applyOptions, error) {
+			applyOptionsFactoryFunc = func(chan event.Event, common.DryRunStrategy, factory.Factory) (applyOptions, error) {
 				return &fakeApplyOptions{}, nil
 			}
 			defer func() { applyOptionsFactoryFunc = oldAO }()
@@ -242,7 +242,7 @@ func TestApplyTask_DryRun(t *testing.T) {
 
 				ao := &fakeApplyOptions{}
 				oldAO := applyOptionsFactoryFunc
-				applyOptionsFactoryFunc = func(chan event.Event, common.DryRunStrategy, util.Factory) (applyOptions, error) {
+				applyOptionsFactoryFunc = func(chan event.Event, common.DryRunStrategy, factory.Factory) (applyOptions, error) {
 					return ao, nil
 				}
 				defer func() { applyOptionsFactoryFunc = oldAO }()

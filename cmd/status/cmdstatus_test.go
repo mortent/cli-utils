@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	cmdtesting "k8s.io/kubectl/pkg/cmd/testing"
-	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 	"sigs.k8s.io/cli-utils/pkg/apply/poller"
+	clifactory "sigs.k8s.io/cli-utils/pkg/factory"
 	"sigs.k8s.io/cli-utils/pkg/kstatus/polling"
 	pollevent "sigs.k8s.io/cli-utils/pkg/kstatus/polling/event"
 	"sigs.k8s.io/cli-utils/pkg/kstatus/status"
@@ -224,7 +224,7 @@ deployment.apps/foo is InProgress: inProgress
 			provider := provider.NewFakeProvider(tf, tc.inventory)
 			runner := &StatusRunner{
 				provider: provider,
-				pollerFactoryFunc: func(c cmdutil.Factory) (poller.Poller, error) {
+				pollerFactoryFunc: func(c clifactory.Factory) (poller.Poller, error) {
 					return &fakePoller{tc.events}, nil
 				},
 

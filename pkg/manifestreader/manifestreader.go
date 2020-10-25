@@ -5,7 +5,7 @@ package manifestreader
 
 import (
 	"k8s.io/cli-runtime/pkg/resource"
-	"k8s.io/kubectl/pkg/cmd/util"
+	"sigs.k8s.io/cli-utils/pkg/factory"
 )
 
 // ManifestReader defines the interface for reading a set
@@ -17,7 +17,7 @@ type ManifestReader interface {
 // ReaderOptions defines the shared inputs for the different
 // implementations of the ManifestReader interface.
 type ReaderOptions struct {
-	Factory          util.Factory
+	Factory          factory.Factory
 	Validate         bool
 	Namespace        string
 	EnforceNamespace bool

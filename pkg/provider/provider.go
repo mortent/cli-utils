@@ -7,7 +7,7 @@ import (
 	"io"
 
 	"k8s.io/apimachinery/pkg/api/meta"
-	"k8s.io/kubectl/pkg/cmd/util"
+	"sigs.k8s.io/cli-utils/pkg/factory"
 	"sigs.k8s.io/cli-utils/pkg/inventory"
 	"sigs.k8s.io/cli-utils/pkg/manifestreader"
 )
@@ -15,7 +15,7 @@ import (
 // Provider is an interface which wraps the kubectl factory and
 // the inventory client.
 type Provider interface {
-	Factory() util.Factory
+	Factory() factory.Factory
 	InventoryClient() (inventory.InventoryClient, error)
 	ToRESTMapper() (meta.RESTMapper, error)
 	ManifestReader(reader io.Reader, args []string) (manifestreader.ManifestReader, error)
@@ -23,18 +23,18 @@ type Provider interface {
 
 // InventoryProvider implements the Provider interface.
 type InventoryProvider struct {
-	factory util.Factory
+	factory factory.Factory
 }
 
 // NewProvider returns a Provider that implements a ConfigMap inventory object.
-func NewProvider(f util.Factory) *InventoryProvider {
+func NewProvider(f factory.Factory) *InventoryProvider {
 	return &InventoryProvider{
 		factory: f,
 	}
 }
 
 // Factory returns the kubectl factory.
-func (f *InventoryProvider) Factory() util.Factory {
+func (f *InventoryProvider) Factory() factory.Factory {
 	return f.factory
 }
 

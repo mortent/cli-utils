@@ -9,7 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/cli-runtime/pkg/resource"
 	"k8s.io/client-go/rest"
-	"k8s.io/kubectl/pkg/cmd/util"
+	"sigs.k8s.io/cli-utils/pkg/factory"
 	"sigs.k8s.io/cli-utils/pkg/object"
 )
 
@@ -23,14 +23,14 @@ type InfoHelper interface {
 	BuildInfos(objs []*unstructured.Unstructured) ([]*resource.Info, error)
 }
 
-func NewInfoHelper(factory util.Factory) *infoHelper {
+func NewInfoHelper(factory factory.Factory) *infoHelper {
 	return &infoHelper{
 		factory: factory,
 	}
 }
 
 type infoHelper struct {
-	factory util.Factory
+	factory factory.Factory
 }
 
 func (ih *infoHelper) UpdateInfos(infos []*resource.Info) error {
