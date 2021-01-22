@@ -176,48 +176,75 @@ func TestNewStatusPollerRunnerCancellation(t *testing.T) {
 }
 
 func TestNewStatusPollerRunnerIdentifierValidation(t *testing.T) {
-	identifiers := []object.ObjMetadata{
-		{
-			GroupKind: schema.GroupKind{
-				Group: "apps",
-				Kind:  "Deployment",
+	testCases := map[string]struct{
+		identifier object.ObjMetadata
+		expectedErrMsg string
+	} {
+		"namespace-scoped resource without namespace": {
+			identifier: object.ObjMetadata{
+				GroupKind: schema.GroupKind{
+					Group: "apps",
+					Kind:  "Deployment",
+				},
+				Name: "foo",
 			},
-			Name: "foo",
+			expectedErrMsg: "is namespace scoped, but namespace is not set",
+		},
+		"cluster-scoped resource with namespace": {
+			identifier: object.ObjMetadata{
+				GroupKind: schema.GroupKind{
+					Group: "",
+					Kind:  "PersistentVolume",
+				},
+				Name: "foo",
+				Namespace: "default",
+			},
+			expectedErrMsg: "ffdsaf",
 		},
 	}
 
-	engine := PollerEngine{
-		Mapper: fakemapper.NewFakeRESTMapper(
-			appsv1.SchemeGroupVersion.WithKind("Deployment"),
-		),
-	}
+	for tn, tc := range testCases {
+		t.Run(tn, func(t *testing.T) {
+			identifiers := []object.ObjMetadata{tc.identifier}
 
-	eventChannel := engine.Poll(context.Background(), identifiers, Options{
-		ClusterReaderFactoryFunc: func(_ client.Reader, _ meta.RESTMapper, _ []object.ObjMetadata) (
-			ClusterReader, error) {
-			return testutil.NewNoopClusterReader(), nil
-		},
-		StatusReadersFactoryFunc: func(_ ClusterReader, _ meta.RESTMapper) (
-			statusReaders map[schema.GroupKind]StatusReader, defaultStatusReader StatusReader) {
-			return make(map[schema.GroupKind]StatusReader), nil
-		},
-	})
+			engine := PollerEngine{
+				Mapper: fakemapper.NewFakeRESTMapper(
+					appsv1.SchemeGroupVersion.WithKind("Deployment"),
+					fakemapper.GVKWithScope(
+						v1.SchemeGroupVersion.WithKind("PersistentVolume"),
+						meta.RESTScopeNameRoot,
+					),
+				),
+			}
 
-	timer := time.NewTimer(3 * time.Second)
-	defer timer.Stop()
-	select {
-	case e := <-eventChannel:
-		if e.EventType != event.ErrorEvent {
-			t.Errorf("expected an error event, but got %s", e.EventType.String())
-			return
-		}
-		err := e.Error
-		if !strings.Contains(err.Error(), "namespace is not set") {
-			t.Errorf("expected error with namespace not set, but got %v", err)
-		}
-		return
-	case <-timer.C:
-		t.Errorf("expected an error event, but didn't get one")
+			eventChannel := engine.Poll(context.Background(), identifiers, Options{
+				ClusterReaderFactoryFunc: func(_ client.Reader, _ meta.RESTMapper, _ []object.ObjMetadata) (
+					ClusterReader, error) {
+					return testutil.NewNoopClusterReader(), nil
+				},
+				StatusReadersFactoryFunc: func(_ ClusterReader, _ meta.RESTMapper) (
+					statusReaders map[schema.GroupKind]StatusReader, defaultStatusReader StatusReader) {
+					return make(map[schema.GroupKind]StatusReader), nil
+				},
+			})
+
+			timer := time.NewTimer(3 * time.Second)
+			defer timer.Stop()
+			select {
+			case e := <-eventChannel:
+				if e.EventType != event.ErrorEvent {
+					t.Errorf("expected an error event, but got %s", e.EventType.String())
+					return
+				}
+				err := e.Error
+				if !strings.Contains(err.Error(), tc.expectedErrMsg) {
+					t.Errorf("expected error with message %s, but got %v", tc.expectedErrMsg, err)
+				}
+				return
+			case <-timer.C:
+				t.Errorf("expected an error event, but didn't get one")
+			}
+		})
 	}
 }
 

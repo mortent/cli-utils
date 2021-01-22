@@ -203,11 +203,7 @@ func InfoToObjMeta(info *resource.Info) (ObjMetadata, error) {
 func UnstructuredsToObjMetas(objs []*unstructured.Unstructured) []ObjMetadata {
 	var objMetas []ObjMetadata
 	for _, obj := range objs {
-		objMetas = append(objMetas, ObjMetadata{
-			Name:      obj.GetName(),
-			Namespace: obj.GetNamespace(),
-			GroupKind: obj.GroupVersionKind().GroupKind(),
-		})
+		objMetas = append(objMetas, UnstructuredToObjMeta(obj))
 	}
 	return objMetas
 }

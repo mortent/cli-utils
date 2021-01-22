@@ -114,6 +114,10 @@ func (s *PollerEngine) validateIdentifiers(identifiers []object.ObjMetadata) err
 			return fmt.Errorf("resource %s %s is namespace scoped, but namespace is not set",
 				id.GroupKind.String(), id.Name)
 		}
+		if mapping.Scope.Name() == meta.RESTScopeNameRoot && id.Namespace != "" {
+			return fmt.Errorf("resource %s %s is cluster scoped, but namespace is set",
+				id.GroupKind.String(), id.Name)
+		}
 	}
 	return nil
 }
